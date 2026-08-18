@@ -378,7 +378,7 @@ foreach ($cmids as $cmid) {
         $moduleinfo->name               = $assign->name;
         $moduleinfo->intro              = '';
         $moduleinfo->introformat        = FORMAT_HTML;
-        $moduleinfo->page               = [
+        $moduleinfo->page               = (object) [
             'text'   => $content,
             'format' => $assign->introformat,
             'itemid' => $draftitemid,
@@ -404,6 +404,18 @@ foreach ($cmids as $cmid) {
                 'add_moduleinfo() did not return a usable new course module id');
         }
         mtrace("OK   cmid={$cm->id} \"{$assign->name}\" -> new Textseite cmid={$newcmid}");
+
+        // Verify the content actually landed. Different Moodle versions
+        // handle the page-editor field shape differently, and a mismatch
+        // there saves empty content with no error at all. Don't trust it -
+        // check, and force-write directly if needed.
+        $newpagecm = get_coursemodule_from_id('page', $newcmid, 0, false, MUST_EXIST);
+        $savedcontent = $DB->get_field('page', 'content', ['id' => $newpagecm->instance]);
+        if (trim((string)$content) !== '' && trim((string)$savedcontent) === '') {
+            $DB->set_field('page', 'content', $content, ['id' => $newpagecm->instance]);
+            $DB->set_field('page', 'contentformat', $assign->introformat, ['id' => $newpagecm->instance]);
+            mtrace("     content was empty after creation - wrote it directly as a fallback (" . strlen($content) . " chars)");
+        }
 
         if ($deleteoriginal) {
             course_delete_module($cm->id);
