@@ -367,8 +367,20 @@ foreach ($cmids as $cmid) {
         $moduleinfo->completionexpected = 0;
         $moduleinfo->beforemod          = $cm->id;
 
-        list($newcm, ) = add_moduleinfo($moduleinfo, $course);
-        mtrace("OK   cmid={$cm->id} \"{$assign->name}\" -> new Textseite cmid={$newcm->id}");
+        $result = add_moduleinfo($moduleinfo, $course);
+        if (is_array($result)) {
+            // Older Moodle: returns [$cm, $moduleinfo].
+            $newcmobj = $result[0];
+            $newcmid  = is_object($newcmobj) ? $newcmobj->id : $newcmobj;
+        } else {
+            // Newer Moodle: returns $moduleinfo directly, with ->coursemodule set.
+            $newcmid = $result->coursemodule ?? null;
+        }
+        if (empty($newcmid)) {
+            throw new \moodle_exception('generalexceptionmessage', 'error', '', null,
+                'add_moduleinfo() did not return a usable new course module id');
+        }
+        mtrace("OK   cmid={$cm->id} \"{$assign->name}\" -> new Textseite cmid={$newcmid}");
 
         if ($deleteoriginal) {
             course_delete_module($cm->id);
