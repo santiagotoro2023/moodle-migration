@@ -167,7 +167,19 @@ parse_config() {
   DBPASS=$(cfg_val dbpass)
   PREFIX=$(cfg_val prefix)
   DBPORT=$(dboption_val dbport)
-  DIRROOT=$(cd "$(dirname "$CONFIG_FILE")" && pwd)
+  # Don't guess dirroot from config.php's folder - on newer Moodle
+  # (public/ docroot) the top-level config.php is a stub that points
+  # elsewhere via $CFG->dirroot, so ask PHP for the real value.
+  DIRROOT=$(php -r '
+    define("CLI_SCRIPT", true);
+    require($argv[1]);
+    echo $CFG->dirroot;
+  ' "$CONFIG_FILE" 2>/dev/null)
+
+  if [ -z "$DIRROOT" ] || [ ! -f "$DIRROOT/course/modlib.php" ]; then
+    log_err "Could not determine a working Moodle dirroot from $CONFIG_FILE (looked for $DIRROOT/course/modlib.php)."
+    exit 1
+  fi
 
   [ -z "$PREFIX" ] && { log_warn "Could not read \$CFG->prefix, assuming 'mdl_'."; PREFIX="mdl_"; }
 
