@@ -234,7 +234,7 @@ do_backup() {
   dumpfile="moodle_${DBNAME}_${ts}.sql.gz"
   log_info "Backing up database '$DBNAME' to $dumpfile ..."
   if [ "$FAMILY" = "mysql" ]; then
-    MYSQL_PWD="$DBPASS" mysqldump -h "$DBHOST" -P "$DBPORT" -u "$DBUSER" "$DBNAME" | gzip > "$dumpfile"
+    MYSQL_PWD="$DBPASS" mysqldump --no-tablespaces -h "$DBHOST" -P "$DBPORT" -u "$DBUSER" "$DBNAME" | gzip > "$dumpfile"
   else
     PGPASSWORD="$DBPASS" pg_dump -h "$DBHOST" -p "$DBPORT" -U "$DBUSER" -d "$DBNAME" --clean --if-exists | gzip > "$dumpfile"
   fi
