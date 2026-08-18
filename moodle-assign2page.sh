@@ -380,6 +380,11 @@ foreach ($cmids as $cmid) {
             $detail .= ' | debuginfo: ' . $e->debuginfo;
         }
         mtrace("FAIL cmid={$cmid}: " . get_class($e) . ': ' . $detail);
+        mtrace("     at " . $e->getFile() . ':' . $e->getLine());
+        $trace = explode("\n", $e->getTraceAsString());
+        foreach (array_slice($trace, 0, 5) as $line) {
+            mtrace("     " . $line);
+        }
         $exitcode = 1;
         // A failed add_moduleinfo()/course_delete_module() call can leave a
         // delegated transaction open. Without cleaning that up, every
