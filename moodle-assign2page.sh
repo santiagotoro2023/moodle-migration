@@ -64,6 +64,14 @@ EOF
 # ---------------------------------------------------------------------
 # discover Moodle install (config.php) - cached after first successful run
 # ---------------------------------------------------------------------
+is_real_config() {
+  # Only the real site config.php sets both of these - theme, cache and
+  # plugin config.php files never do (even though many of them also carry
+  # the generic MOODLE_INTERNAL include guard, which is why that alone
+  # isn't a reliable filter).
+  grep -q '\$CFG->dbtype' "$1" 2>/dev/null && grep -q '\$CFG->wwwroot' "$1" 2>/dev/null
+}
+
 discover_config() {
   if [ -n "${MOODLE_CONFIG:-}" ] && [ -f "$MOODLE_CONFIG" ]; then
     CONFIG_FILE="$MOODLE_CONFIG"
@@ -74,7 +82,7 @@ discover_config() {
   if [ -f "$CACHE_FILE" ]; then
     # shellcheck disable=SC1090
     source "$CACHE_FILE"
-    if [ -n "${CONFIG_FILE:-}" ] && [ -f "$CONFIG_FILE" ]; then
+    if [ -n "${CONFIG_FILE:-}" ] && [ -f "$CONFIG_FILE" ] && is_real_config "$CONFIG_FILE"; then
       if confirm "Use previously found Moodle install at $CONFIG_FILE?" Y; then
         return
       fi
@@ -82,18 +90,34 @@ discover_config() {
   fi
 
   log_info "Looking for your Moodle install..."
-  local candidates=()
-  for base in /var/www/html /var/www/moodle /var/www /srv/moodle /opt/moodle /usr/share/moodle; do
-    [ -f "$base/config.php" ] && candidates+=("$base/config.php")
+  declare -A seen=()
+  local candidates=() real
+
+  # Quick pass: classic docroot AND the newer Moodle 4.5+ layout where the
+  # served code lives under a public/ subdirectory, one level of
+  # subdirectory deep too (e.g. /var/www/html/moodle/public/config.php).
+  local bases=(/var/www/html /var/www/moodle /var/www /srv/moodle /opt/moodle /usr/share/moodle)
+  for base in "${bases[@]}"; do
+    for p in "$base/config.php" "$base/public/config.php" "$base"/*/config.php "$base"/*/public/config.php; do
+      [ -f "$p" ] || continue
+      is_real_config "$p" || continue
+      real=$(readlink -f "$p")
+      [ -n "${seen[$real]:-}" ] && continue
+      seen[$real]=1
+      candidates+=("$p")
+    done
   done
 
   if [ ${#candidates[@]} -eq 0 ]; then
     log_info "Not in common locations, doing a broader filesystem search (this can take a moment)..."
     while IFS= read -r f; do
+      is_real_config "$f" || continue
+      real=$(readlink -f "$f")
+      [ -n "${seen[$real]:-}" ] && continue
+      seen[$real]=1
       candidates+=("$f")
-    done < <(find / \( -path /proc -o -path /sys -o -path /dev \) -prune -o \
-              -maxdepth 7 -iname "config.php" -print 2>/dev/null | \
-              xargs -r grep -l "MOODLE_INTERNAL" 2>/dev/null)
+    done < <(find / \( -path /proc -o -path /sys -o -path /dev -o -path /home \) -prune -o \
+              -maxdepth 9 -iname "config.php" -print 2>/dev/null)
   fi
 
   if [ ${#candidates[@]} -eq 1 ]; then
