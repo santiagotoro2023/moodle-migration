@@ -324,6 +324,11 @@ $USER = get_admin();
 $cmids = [__CMID_LIST__];
 $deleteoriginal = true;
 
+// add_moduleinfo() does NOT resolve $moduleinfo->module (the numeric FK
+// into mdl_modules) from $moduleinfo->modulename itself - normally
+// course/modedit.php does that lookup before calling it. Do it once here.
+$pagemoduleid = $DB->get_field('modules', 'id', ['name' => 'page'], MUST_EXIST);
+
 $exitcode = 0;
 $lastcourseid = null;
 
@@ -342,6 +347,7 @@ foreach ($cmids as $cmid) {
         );
 
         $moduleinfo = new stdClass();
+        $moduleinfo->module              = $pagemoduleid;
         $moduleinfo->modulename         = 'page';
         $moduleinfo->course             = $course->id;
         $moduleinfo->section            = $section->section;
