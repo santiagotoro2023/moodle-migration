@@ -369,8 +369,21 @@ foreach ($cmids as $cmid) {
             mtrace("     deleted original assignment cmid={$cm->id}");
         }
     } catch (Throwable $e) {
-        mtrace("FAIL cmid={$cmid}: " . $e->getMessage());
+        $detail = $e->getMessage();
+        if ($e instanceof \moodle_exception && !empty($e->debuginfo)) {
+            $detail .= ' | debuginfo: ' . $e->debuginfo;
+        }
+        mtrace("FAIL cmid={$cmid}: " . get_class($e) . ': ' . $detail);
         $exitcode = 1;
+        // A failed add_moduleinfo()/course_delete_module() call can leave a
+        // delegated transaction open. Without cleaning that up, every
+        // subsequent item in the loop fails too (with the same generic
+        // "error writing to database" message), masking the real cause.
+        try {
+            $DB->force_transaction_rollback();
+        } catch (Throwable $e2) {
+            mtrace("     (also failed to roll back cleanly: " . $e2->getMessage() . ")");
+        }
     }
 }
 
