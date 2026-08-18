@@ -252,14 +252,36 @@ restore_from_file() {
   log_info "Restoring $file into '$DBNAME' ..."
   if [ "$FAMILY" = "mysql" ]; then
     gunzip -c "$file" | MYSQL_PWD="$DBPASS" mysql -h "$DBHOST" -P "$DBPORT" -u "$DBUSER" "$DBNAME"
+    local rc="${PIPESTATUS[1]}"
   else
     gunzip -c "$file" | PGPASSWORD="$DBPASS" psql -h "$DBHOST" -p "$DBPORT" -U "$DBUSER" -d "$DBNAME" -v ON_ERROR_STOP=1
+    local rc="${PIPESTATUS[1]}"
   fi
-  if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-    log_err "Restore failed. Database may be in a partial state - restore manually from $file."
+  if [ "$rc" -ne 0 ]; then
+    log_err "Restore failed (import exit code $rc). Database is likely in a PARTIAL state - do not assume it's clean. Re-run the import manually to see the actual SQL error:"
+    if [ "$FAMILY" = "mysql" ]; then
+      log_err "  gunzip -c $file | mysql -h $DBHOST -P $DBPORT -u $DBUSER -p $DBNAME"
+    else
+      log_err "  gunzip -c $file | psql -h $DBHOST -p $DBPORT -U $DBUSER -d $DBNAME"
+    fi
     exit 1
   fi
   log_ok "Restore complete."
+
+  log_info "Purging Moodle's cache (required after any raw DB restore)..."
+  local purge_out
+  purge_out=$(php -r '
+    define("CLI_SCRIPT", true);
+    require($argv[1]);
+    purge_all_caches();
+    echo "PURGE_OK";
+  ' "$CONFIG_FILE" 2>&1)
+  if [[ "$purge_out" == *PURGE_OK* ]]; then
+    log_ok "Cache purged."
+  else
+    log_warn "Automatic cache purge failed, do it manually via Site Administration > Development > Purge caches in the browser. Details:"
+    echo "$purge_out"
+  fi
 }
 
 # ---------------------------------------------------------------------
@@ -345,6 +367,7 @@ foreach ($cmids as $cmid) {
         $content = file_prepare_draft_area(
             $draftitemid, $context->id, 'mod_assign', 'intro', $assign->id, null, $assign->intro
         );
+        mtrace("     source Beschreibung: " . strlen((string)$assign->intro) . " chars, copied content: " . strlen((string)$content) . " chars");
 
         $moduleinfo = new stdClass();
         $moduleinfo->module              = $pagemoduleid;
